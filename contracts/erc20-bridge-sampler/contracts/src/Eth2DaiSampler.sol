@@ -20,7 +20,7 @@ pragma solidity ^0.5.9;
 pragma experimental ABIEncoderV2;
 
 import "@0x/contracts-utils/contracts/src/DeploymentConstants.sol";
-import "./IEth2Dai.sol";
+import "./interfaces/IEth2Dai.sol";
 import "./SamplerUtils.sol";
 
 
@@ -68,39 +68,6 @@ contract Eth2DaiSampler is
         }
     }
 
-    /// @dev Sample sell quotes from Eth2Dai/Oasis using a hop to an intermediate token.
-    ///      I.e WBTC/DAI via ETH or WBTC/ETH via DAI
-    /// @param takerToken Address of the taker token (what to sell).
-    /// @param makerToken Address of the maker token (what to buy).
-    /// @param intermediateToken Address of the token to hop to.
-    /// @param takerTokenAmounts Taker token sell amount for each sample.
-    /// @return makerTokenAmounts Maker amounts bought at each taker token
-    ///         amount.
-    function sampleSellsFromEth2DaiHop(
-        address takerToken,
-        address makerToken,
-        address intermediateToken,
-        uint256[] memory takerTokenAmounts
-    )
-        public
-        view
-        returns (uint256[] memory makerTokenAmounts)
-    {
-        if (makerToken == intermediateToken || takerToken == intermediateToken) {
-            return makerTokenAmounts;
-        }
-        uint256[] memory intermediateAmounts = sampleSellsFromEth2Dai(
-            takerToken,
-            intermediateToken,
-            takerTokenAmounts
-        );
-        makerTokenAmounts = sampleSellsFromEth2Dai(
-            intermediateToken,
-            makerToken,
-            intermediateAmounts
-        );
-    }
-
     /// @dev Sample buy quotes from Eth2Dai/Oasis.
     /// @param takerToken Address of the taker token (what to sell).
     /// @param makerToken Address of the maker token (what to buy).
@@ -136,5 +103,43 @@ contract Eth2DaiSampler is
             }
             takerTokenAmounts[i] = sellAmount;
         }
+    }
+
+    function sampleSellFromEth2Dai(
+        bytes memory encodedParams,
+        uint256 sellAmount
+    )
+        public
+        view
+        returns (uint256 buyAmount)
+    {
+        (address takerToken, address makerToken) = abi.decode(
+            encodedParams,
+            (address, address)
+        );
+        return sampleSellsFromEth2Dai(
+            takerToken,
+            makerToken,
+            _toSingleValueArray(sellAmount)
+        )[0];
+    }
+
+    function sampleBuyFromEth2Dai(
+        bytes memory encodedParams,
+        uint256 buyAmount
+    )
+        public
+        view
+        returns (uint256 sellAmount)
+    {
+        (address takerToken, address makerToken) = abi.decode(
+            encodedParams,
+            (address, address)
+        );
+        return sampleBuysFromEth2Dai(
+            takerToken,
+            makerToken,
+            _toSingleValueArray(buyAmount)
+        )[0];
     }
 }

@@ -25,7 +25,7 @@ import "@0x/contracts-exchange-libs/contracts/src/LibOrder.sol";
 import "@0x/contracts-exchange-libs/contracts/src/LibMath.sol";
 import "@0x/contracts-utils/contracts/src/DeploymentConstants.sol";
 import "@0x/contracts-utils/contracts/src/LibBytes.sol";
-import "./IUniswapExchangeQuotes.sol";
+import "./interfaces/IUniswapExchangeQuotes.sol";
 import "./SamplerUtils.sol";
 
 
@@ -152,6 +152,40 @@ contract UniswapSampler is
                 break;
             }
         }
+    }
+
+    function sampleSellFromUniswap(
+        bytes memory encodedParams,
+        uint256 sellAmount
+    )
+        public
+        view
+        returns (uint256 buyAmount)
+    {
+        (address takerToken, address makerToken) =
+            abi.decode(encodedParams, (address, address));
+        return sampleSellsFromUniswap(
+            takerToken,
+            makerToken,
+            _toSingleValueArray(sellAmount)
+        )[0];
+    }
+
+    function sampleBuyFromUniswap(
+        bytes memory encodedParams,
+        uint256 buyAmount
+    )
+        public
+        view
+        returns (uint256 sellAmount)
+    {
+        (address takerToken, address makerToken) =
+            abi.decode(encodedParams, (address, address));
+        return sampleBuysFromUniswap(
+            takerToken,
+            makerToken,
+            _toSingleValueArray(buyAmount)
+        )[0];
     }
 
     /// @dev Gracefully calls a Uniswap pricing function.

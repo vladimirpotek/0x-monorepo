@@ -7,7 +7,7 @@ import {
     randomAddress,
 } from '@0x/contracts-test-utils';
 import { Order } from '@0x/types';
-import { BigNumber, hexUtils } from '@0x/utils';
+import { AbiEncoder, BigNumber, hexUtils } from '@0x/utils';
 import * as _ from 'lodash';
 
 import { artifacts } from './artifacts';
@@ -33,6 +33,7 @@ blockchainTests('erc20-bridge-sampler', env => {
     const INVALID_TOKEN_PAIR_ERROR = 'ERC20BridgeSampler/INVALID_TOKEN_PAIR';
     const MAKER_TOKEN = randomAddress();
     const TAKER_TOKEN = randomAddress();
+    const INTERMEDIATE_TOKEN = randomAddress();
     let devUtilsAddress: string;
 
     before(async () => {
@@ -266,6 +267,33 @@ blockchainTests('erc20-bridge-sampler', env => {
         await testContract.enableFailTrigger().awaitTransactionSuccessAsync({ value: 1 });
     }
 
+    function expectQuotesWithinRange(
+        quotes: BigNumber[],
+        expectedQuotes: BigNumber[],
+        maxSlippage: BigNumber | number,
+    ): void {
+        quotes.forEach((_q, i) => {
+            // If we're within 1 base unit of a low decimal token
+            // then that's as good as we're going to get (and slippage is "high")
+            if (
+                expectedQuotes[i].isZero() ||
+                BigNumber.max(expectedQuotes[i], quotes[i])
+                    .minus(BigNumber.min(expectedQuotes[i], quotes[i]))
+                    .eq(1)
+            ) {
+                return;
+            }
+            const slippage = quotes[i]
+                .dividedBy(expectedQuotes[i])
+                .minus(1)
+                .decimalPlaces(4);
+            expect(slippage, `quote[${i}]: ${slippage} ${quotes[i]} ${expectedQuotes[i]}`).to.be.bignumber.gte(0);
+            expect(slippage, `quote[${i}] ${slippage} ${quotes[i]} ${expectedQuotes[i]}`).to.be.bignumber.lte(
+                new BigNumber(maxSlippage),
+            );
+        });
+    }
+
     describe('getOrderFillableTakerAssetAmounts()', () => {
         it('returns the expected amount for each order', async () => {
             const orders = createOrders(MAKER_TOKEN, TAKER_TOKEN);
@@ -447,32 +475,6 @@ blockchainTests('erc20-bridge-sampler', env => {
             const quotes = await testContract.sampleBuysFromKyberNetwork(TAKER_TOKEN, MAKER_TOKEN, []).callAsync();
             expect(quotes).to.deep.eq([]);
         });
-        const expectQuotesWithinRange = (
-            quotes: BigNumber[],
-            expectedQuotes: BigNumber[],
-            maxSlippage: BigNumber | number,
-        ) => {
-            quotes.forEach((_q, i) => {
-                // If we're within 1 base unit of a low decimal token
-                // then that's as good as we're going to get (and slippage is "high")
-                if (
-                    expectedQuotes[i].isZero() ||
-                    BigNumber.max(expectedQuotes[i], quotes[i])
-                        .minus(BigNumber.min(expectedQuotes[i], quotes[i]))
-                        .eq(1)
-                ) {
-                    return;
-                }
-                const slippage = quotes[i]
-                    .dividedBy(expectedQuotes[i])
-                    .minus(1)
-                    .decimalPlaces(4);
-                expect(slippage, `quote[${i}]: ${slippage} ${quotes[i]} ${expectedQuotes[i]}`).to.be.bignumber.gte(0);
-                expect(slippage, `quote[${i}] ${slippage} ${quotes[i]} ${expectedQuotes[i]}`).to.be.bignumber.lte(
-                    new BigNumber(maxSlippage),
-                );
-            });
-        };
 
         it('can quote token -> token', async () => {
             const sampleAmounts = getSampleAmounts(TAKER_TOKEN);
@@ -1093,6 +1095,134 @@ blockchainTests('erc20-bridge-sampler', env => {
             expect(testContract.getABIDecodedReturnData('getOrderFillableTakerAssetAmounts', r[0])).to.deep.eq(
                 expected,
             );
+        });
+    });
+
+    blockchainTests.resets('TwoHopSampler', () => {
+        const uniswapParameterEncoder = AbiEncoder.create([
+            { name: 'takerToken', type: 'address' },
+            { name: 'makerToken', type: 'address' },
+        ]);
+        const eth2DaiParameterEncoder = uniswapParameterEncoder;
+        const uniswapV2ParameterEncoder = AbiEncoder.create('(address[])');
+
+        before(async () => {
+            await testContract
+                .createTokenExchanges([MAKER_TOKEN, TAKER_TOKEN, INTERMEDIATE_TOKEN])
+                .awaitTransactionSuccessAsync();
+        });
+
+        it('sampleTwoHopSell', async () => {
+            // tslint:disable-next-line no-unnecessary-type-assertion
+            const sellAmount = _.last(getSampleAmounts(TAKER_TOKEN))!;
+            const uniswapV2FirstHopPath = [TAKER_TOKEN, INTERMEDIATE_TOKEN];
+            const uniswapV2FirstHop = {
+                selector: testContract.getSelector('sampleSellFromUniswapV2'),
+                parameters: uniswapV2ParameterEncoder.encode([uniswapV2FirstHopPath]),
+            };
+
+            const uniswapV2SecondHopPath = [INTERMEDIATE_TOKEN, randomAddress(), MAKER_TOKEN];
+            const uniswapV2SecondHop = {
+                selector: testContract.getSelector('sampleSellFromUniswapV2'),
+                parameters: uniswapV2ParameterEncoder.encode([uniswapV2SecondHopPath]),
+            };
+
+            const eth2DaiFirstHop = {
+                selector: testContract.getSelector('sampleSellFromEth2Dai'),
+                parameters: eth2DaiParameterEncoder.encode({ takerToken: TAKER_TOKEN, makerToken: INTERMEDIATE_TOKEN }),
+            };
+            const eth2DaiSecondHop = {
+                selector: testContract.getSelector('sampleSellFromEth2Dai'),
+                parameters: eth2DaiParameterEncoder.encode({ takerToken: INTERMEDIATE_TOKEN, makerToken: MAKER_TOKEN }),
+            };
+
+            const firstHopQuotes = [
+                getDeterministicSellQuote(ETH2DAI_SALT, TAKER_TOKEN, INTERMEDIATE_TOKEN, sellAmount),
+                getDeterministicUniswapV2SellQuote(uniswapV2FirstHopPath, sellAmount),
+            ];
+            const expectedIntermediateAssetAmount = BigNumber.max(...firstHopQuotes);
+            const secondHopQuotes = [
+                getDeterministicSellQuote(
+                    ETH2DAI_SALT,
+                    INTERMEDIATE_TOKEN,
+                    MAKER_TOKEN,
+                    expectedIntermediateAssetAmount,
+                ),
+                getDeterministicUniswapV2SellQuote(uniswapV2SecondHopPath, expectedIntermediateAssetAmount),
+            ];
+            const expectedBuyAmount = BigNumber.max(...secondHopQuotes);
+
+            const [firstHopSourceIndex, secondHopSourceIndex, buyAmount] = await testContract
+                .sampleTwoHopSell(
+                    [eth2DaiFirstHop, uniswapV2FirstHop],
+                    [eth2DaiSecondHop, uniswapV2SecondHop],
+                    sellAmount,
+                )
+                .callAsync();
+
+            expect(firstHopSourceIndex, 'First hop source index').to.bignumber.equal(
+                firstHopQuotes.findIndex(quote => quote.isEqualTo(expectedIntermediateAssetAmount)),
+            );
+            expect(secondHopSourceIndex, 'Second hop source index').to.bignumber.equal(
+                secondHopQuotes.findIndex(quote => quote.isEqualTo(expectedBuyAmount)),
+            );
+            expect(buyAmount, 'Two hop buy amount').to.bignumber.equal(expectedBuyAmount);
+        });
+        it('sampleTwoHopBuy', async () => {
+            // tslint:disable-next-line no-unnecessary-type-assertion
+            const buyAmount = _.last(getSampleAmounts(MAKER_TOKEN))!;
+            const uniswapV2FirstHopPath = [TAKER_TOKEN, INTERMEDIATE_TOKEN];
+            const uniswapV2FirstHop = {
+                selector: testContract.getSelector('sampleBuyFromUniswapV2'),
+                parameters: uniswapV2ParameterEncoder.encode([uniswapV2FirstHopPath]),
+            };
+
+            const uniswapV2SecondHopPath = [INTERMEDIATE_TOKEN, randomAddress(), MAKER_TOKEN];
+            const uniswapV2SecondHop = {
+                selector: testContract.getSelector('sampleBuyFromUniswapV2'),
+                parameters: uniswapV2ParameterEncoder.encode([uniswapV2SecondHopPath]),
+            };
+
+            const eth2DaiFirstHop = {
+                selector: testContract.getSelector('sampleBuyFromEth2Dai'),
+                parameters: eth2DaiParameterEncoder.encode({ takerToken: TAKER_TOKEN, makerToken: INTERMEDIATE_TOKEN }),
+            };
+            const eth2DaiSecondHop = {
+                selector: testContract.getSelector('sampleBuyFromEth2Dai'),
+                parameters: eth2DaiParameterEncoder.encode({ takerToken: INTERMEDIATE_TOKEN, makerToken: MAKER_TOKEN }),
+            };
+
+            const secondHopQuotes = [
+                getDeterministicBuyQuote(ETH2DAI_SALT, INTERMEDIATE_TOKEN, MAKER_TOKEN, buyAmount),
+                getDeterministicUniswapV2BuyQuote(uniswapV2SecondHopPath, buyAmount),
+            ];
+            const expectedIntermediateAssetAmount = BigNumber.min(...secondHopQuotes);
+
+            const firstHopQuotes = [
+                getDeterministicBuyQuote(
+                    ETH2DAI_SALT,
+                    TAKER_TOKEN,
+                    INTERMEDIATE_TOKEN,
+                    expectedIntermediateAssetAmount,
+                ),
+                getDeterministicUniswapV2BuyQuote(uniswapV2FirstHopPath, expectedIntermediateAssetAmount),
+            ];
+            const expectedSellAmount = BigNumber.min(...firstHopQuotes);
+
+            const [firstHopSourceIndex, secondHopSourceIndex, sellAmount] = await testContract
+                .sampleTwoHopBuy(
+                    [eth2DaiFirstHop, uniswapV2FirstHop],
+                    [eth2DaiSecondHop, uniswapV2SecondHop],
+                    buyAmount,
+                )
+                .callAsync();
+            expect(firstHopSourceIndex, 'First hop source index').to.bignumber.equal(
+                firstHopQuotes.findIndex(quote => quote.isEqualTo(expectedSellAmount)),
+            );
+            expect(secondHopSourceIndex, 'Second hop source index').to.bignumber.equal(
+                secondHopQuotes.findIndex(quote => quote.isEqualTo(expectedIntermediateAssetAmount)),
+            );
+            expect(sellAmount, 'Two hop sell amount').to.bignumber.equal(expectedSellAmount);
         });
     });
 });

@@ -27,6 +27,7 @@ import "./MultiBridgeSampler.sol";
 import "./NativeOrderSampler.sol";
 import "./UniswapSampler.sol";
 import "./UniswapV2Sampler.sol";
+import "./TwoHopSampler.sol";
 
 
 contract ERC20BridgeSampler is
@@ -37,7 +38,8 @@ contract ERC20BridgeSampler is
     LiquidityProviderSampler,
     UniswapV2Sampler,
     MultiBridgeSampler,
-    NativeOrderSampler
+    NativeOrderSampler,
+    TwoHopSampler
 {
     /// @dev Call multiple public functions on this contract in a single transaction.
     /// @param callDatas ABI-encoded call data for each function call.

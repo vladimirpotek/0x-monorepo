@@ -20,10 +20,10 @@ pragma solidity ^0.5.9;
 pragma experimental ABIEncoderV2;
 
 import "@0x/contracts-utils/contracts/src/DeploymentConstants.sol";
-import "./IKyberNetwork.sol";
-import "./IKyberNetworkProxy.sol";
-import "./IKyberStorage.sol";
-import "./IKyberHintHandler.sol";
+import "./interfaces/IKyberNetwork.sol";
+import "./interfaces/IKyberNetworkProxy.sol";
+import "./interfaces/IKyberStorage.sol";
+import "./interfaces/IKyberHintHandler.sol";
 import "./ApproximateBuys.sol";
 import "./SamplerUtils.sol";
 
@@ -95,29 +95,56 @@ contract KyberSampler is
         _assertValidPair(makerToken, takerToken);
         return _sampleApproximateBuys(
             ApproximateBuyQuoteOpts({
-                makerTokenData: abi.encode(makerToken),
-                takerTokenData: abi.encode(takerToken),
-                getSellQuoteCallback: _sampleSellForApproximateBuyFromKyber
+                pseudoBuyQuoteParams: abi.encode(makerToken, takerToken),
+                sellQuoteParams: abi.encode(takerToken, makerToken),
+                getSellQuoteCallback: sampleSellFromKyberNetwork
             }),
             makerTokenAmounts
         );
     }
 
-    function _sampleSellForApproximateBuyFromKyber(
-        bytes memory takerTokenData,
-        bytes memory makerTokenData,
+    function sampleSellFromKyberNetwork(
+        bytes memory encodedParams,
         uint256 sellAmount
     )
-        private
+        public
         view
         returns (uint256 buyAmount)
     {
+        (address takerToken, address makerToken) =
+            abi.decode(encodedParams, (address, address));
+
         (bool success, bytes memory resultData) =
             address(this).staticcall(abi.encodeWithSelector(
                 this.sampleSellsFromKyberNetwork.selector,
-                abi.decode(takerTokenData, (address)),
-                abi.decode(makerTokenData, (address)),
+                takerToken,
+                makerToken,
                 _toSingleValueArray(sellAmount)
+            ));
+        if (!success) {
+            return 0;
+        }
+        // solhint-disable-next-line indent
+        return abi.decode(resultData, (uint256[]))[0];
+    }
+
+    function sampleBuyFromKyberNetwork(
+        bytes memory encodedParams,
+        uint256 buyAmount
+    )
+        public
+        view
+        returns (uint256 sellAmount)
+    {
+        (address takerToken, address makerToken) =
+            abi.decode(encodedParams, (address, address));
+
+        (bool success, bytes memory resultData) =
+            address(this).staticcall(abi.encodeWithSelector(
+                this.sampleBuysFromKyberNetwork.selector,
+                takerToken,
+                makerToken,
+                _toSingleValueArray(buyAmount)
             ));
         if (!success) {
             return 0;

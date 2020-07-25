@@ -23,16 +23,15 @@ import "@0x/contracts-exchange-libs/contracts/src/LibMath.sol";
 
 
 contract ApproximateBuys {
-
     /// @dev Information computing buy quotes for sources that do not have native
     ///      buy quote support.
     struct ApproximateBuyQuoteOpts {
-        // Arbitrary maker token data to pass to `getSellQuoteCallback`.
-        bytes makerTokenData;
-        // Arbitrary taker token data to pass to `getSellQuoteCallback`.
-        bytes takerTokenData;
+        // Params to pass to `getSellQuoteCallback`.
+        bytes pseudoBuyQuoteParams;
+        // Params to pass to `getSellQuoteCallback`.
+        bytes sellQuoteParams;
         // Callback to retrieve a sell quote.
-        function (bytes memory, bytes memory, uint256)
+        function (bytes memory, uint256)
             internal
             view
             returns (uint256) getSellQuoteCallback;
@@ -58,8 +57,7 @@ contract ApproximateBuys {
         }
 
         uint256 sellAmount = opts.getSellQuoteCallback(
-            opts.makerTokenData,
-            opts.takerTokenData,
+            opts.pseudoBuyQuoteParams,
             makerTokenAmounts[0]
         );
         if (sellAmount == 0) {
@@ -67,8 +65,7 @@ contract ApproximateBuys {
         }
 
         uint256 buyAmount = opts.getSellQuoteCallback(
-            opts.takerTokenData,
-            opts.makerTokenData,
+            opts.sellQuoteParams,
             sellAmount
         );
         if (buyAmount == 0) {
@@ -89,8 +86,7 @@ contract ApproximateBuys {
                     sellAmount
                 );
                 uint256 _buyAmount = opts.getSellQuoteCallback(
-                    opts.takerTokenData,
-                    opts.makerTokenData,
+                    opts.sellQuoteParams,
                     sellAmount
                 );
                 if (_buyAmount == 0) {

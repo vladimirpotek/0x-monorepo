@@ -20,8 +20,8 @@ pragma solidity ^0.5.9;
 pragma experimental ABIEncoderV2;
 
 import "@0x/contracts-utils/contracts/src/LibBytes.sol";
-import "./ILiquidityProvider.sol";
-import "./ILiquidityProviderRegistry.sol";
+import "./interfaces/ILiquidityProvider.sol";
+import "./interfaces/ILiquidityProviderRegistry.sol";
 import "./ApproximateBuys.sol";
 import "./SamplerUtils.sol";
 
@@ -104,9 +104,9 @@ contract LiquidityProviderSampler is
     {
         return _sampleApproximateBuys(
             ApproximateBuyQuoteOpts({
-                makerTokenData: abi.encode(makerToken, registryAddress),
-                takerTokenData: abi.encode(takerToken, registryAddress),
-                getSellQuoteCallback: _sampleSellForApproximateBuyFromLiquidityProviderRegistry
+                pseudoBuyQuoteParams: abi.encode(registryAddress, makerToken, takerToken),
+                sellQuoteParams: abi.encode(registryAddress, takerToken, makerToken),
+                getSellQuoteCallback: sampleSellFromLiquidityProviderRegistry
             }),
             makerTokenAmounts
         );
@@ -138,19 +138,17 @@ contract LiquidityProviderSampler is
         }
     }
 
-    function _sampleSellForApproximateBuyFromLiquidityProviderRegistry(
-        bytes memory takerTokenData,
-        bytes memory makerTokenData,
+    function sampleSellFromLiquidityProviderRegistry(
+        bytes memory encodedParams,
         uint256 sellAmount
     )
-        private
+        public
         view
         returns (uint256 buyAmount)
     {
-        (address takerToken, address plpRegistryAddress) =
-            abi.decode(takerTokenData, (address, address));
-        (address makerToken) =
-            abi.decode(makerTokenData, (address));
+        (address plpRegistryAddress, address takerToken, address makerToken) =
+            abi.decode(encodedParams, (address, address, address));
+
         (bool success, bytes memory resultData) =
             address(this).staticcall(abi.encodeWithSelector(
                 this.sampleSellsFromLiquidityProviderRegistry.selector,
@@ -158,6 +156,32 @@ contract LiquidityProviderSampler is
                 takerToken,
                 makerToken,
                 _toSingleValueArray(sellAmount)
+            ));
+        if (!success) {
+            return 0;
+        }
+        // solhint-disable-next-line indent
+        return abi.decode(resultData, (uint256[]))[0];
+    }
+
+    function sampleBuyFromLiquidityProviderRegistry(
+        bytes memory encodedParams,
+        uint256 buyAmount
+    )
+        public
+        view
+        returns (uint256 sellAmount)
+    {
+        (address plpRegistryAddress, address takerToken, address makerToken) =
+            abi.decode(encodedParams, (address, address, address));
+
+        (bool success, bytes memory resultData) =
+            address(this).staticcall(abi.encodeWithSelector(
+                this.sampleBuysFromLiquidityProviderRegistry.selector,
+                plpRegistryAddress,
+                takerToken,
+                makerToken,
+                _toSingleValueArray(buyAmount)
             ));
         if (!success) {
             return 0;

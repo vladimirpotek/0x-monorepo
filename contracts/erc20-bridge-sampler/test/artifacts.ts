@@ -29,15 +29,22 @@ import * as MultiBridgeSampler from '../test/generated-artifacts/MultiBridgeSamp
 import * as NativeOrderSampler from '../test/generated-artifacts/NativeOrderSampler.json';
 import * as SamplerUtils from '../test/generated-artifacts/SamplerUtils.json';
 import * as TestERC20BridgeSampler from '../test/generated-artifacts/TestERC20BridgeSampler.json';
+import * as TwoHopSampler from '../test/generated-artifacts/TwoHopSampler.json';
 import * as UniswapSampler from '../test/generated-artifacts/UniswapSampler.json';
 import * as UniswapV2Sampler from '../test/generated-artifacts/UniswapV2Sampler.json';
 export const artifacts = {
     ApproximateBuys: ApproximateBuys as ContractArtifact,
     CurveSampler: CurveSampler as ContractArtifact,
-    DummyLiquidityProvider: DummyLiquidityProvider as ContractArtifact,
-    DummyLiquidityProviderRegistry: DummyLiquidityProviderRegistry as ContractArtifact,
     ERC20BridgeSampler: ERC20BridgeSampler as ContractArtifact,
     Eth2DaiSampler: Eth2DaiSampler as ContractArtifact,
+    KyberSampler: KyberSampler as ContractArtifact,
+    LiquidityProviderSampler: LiquidityProviderSampler as ContractArtifact,
+    MultiBridgeSampler: MultiBridgeSampler as ContractArtifact,
+    NativeOrderSampler: NativeOrderSampler as ContractArtifact,
+    SamplerUtils: SamplerUtils as ContractArtifact,
+    TwoHopSampler: TwoHopSampler as ContractArtifact,
+    UniswapSampler: UniswapSampler as ContractArtifact,
+    UniswapV2Sampler: UniswapV2Sampler as ContractArtifact,
     ICurve: ICurve as ContractArtifact,
     IDevUtils: IDevUtils as ContractArtifact,
     IEth2Dai: IEth2Dai as ContractArtifact,
@@ -50,12 +57,7 @@ export const artifacts = {
     IMultiBridge: IMultiBridge as ContractArtifact,
     IUniswapExchangeQuotes: IUniswapExchangeQuotes as ContractArtifact,
     IUniswapV2Router01: IUniswapV2Router01 as ContractArtifact,
-    KyberSampler: KyberSampler as ContractArtifact,
-    LiquidityProviderSampler: LiquidityProviderSampler as ContractArtifact,
-    MultiBridgeSampler: MultiBridgeSampler as ContractArtifact,
-    NativeOrderSampler: NativeOrderSampler as ContractArtifact,
-    SamplerUtils: SamplerUtils as ContractArtifact,
-    UniswapSampler: UniswapSampler as ContractArtifact,
-    UniswapV2Sampler: UniswapV2Sampler as ContractArtifact,
+    DummyLiquidityProvider: DummyLiquidityProvider as ContractArtifact,
+    DummyLiquidityProviderRegistry: DummyLiquidityProviderRegistry as ContractArtifact,
     TestERC20BridgeSampler: TestERC20BridgeSampler as ContractArtifact,
 };

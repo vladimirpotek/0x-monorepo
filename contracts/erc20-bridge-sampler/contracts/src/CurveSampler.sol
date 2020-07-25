@@ -19,7 +19,7 @@
 pragma solidity ^0.5.9;
 pragma experimental ABIEncoderV2;
 
-import "./ICurve.sol";
+import "./interfaces/ICurve.sol";
 import "./ApproximateBuys.sol";
 import "./SamplerUtils.sol";
 
@@ -98,9 +98,9 @@ contract CurveSampler is
             // Buys not supported on this curve, so approximate it.
             return _sampleApproximateBuys(
                 ApproximateBuyQuoteOpts({
-                    makerTokenData: abi.encode(toTokenIdx, curveInfo),
-                    takerTokenData: abi.encode(fromTokenIdx, curveInfo),
-                    getSellQuoteCallback: _sampleSellForApproximateBuyFromCurve
+                    pseudoBuyQuoteParams: abi.encode(curveInfo, toTokenIdx, fromTokenIdx),
+                    sellQuoteParams: abi.encode(curveInfo, fromTokenIdx, toTokenIdx),
+                    getSellQuoteCallback: sampleSellFromCurve
                 }),
                 makerTokenAmounts
             );
@@ -126,19 +126,17 @@ contract CurveSampler is
         }
     }
 
-    function _sampleSellForApproximateBuyFromCurve(
-        bytes memory takerTokenData,
-        bytes memory makerTokenData,
+    function sampleSellFromCurve(
+        bytes memory encodedParams,
         uint256 sellAmount
     )
-        private
+        public
         view
         returns (uint256 buyAmount)
     {
-        (int128 takerTokenIdx, CurveInfo memory curveInfo) =
-            abi.decode(takerTokenData, (int128, CurveInfo));
-        (int128 makerTokenIdx) =
-            abi.decode(makerTokenData, (int128));
+        (CurveInfo memory curveInfo, int128 takerTokenIdx, int128 makerTokenIdx) =
+            abi.decode(encodedParams, (CurveInfo, int128, int128));
+
         (bool success, bytes memory resultData) =
             address(this).staticcall(abi.encodeWithSelector(
                 this.sampleSellsFromCurve.selector,
@@ -146,6 +144,32 @@ contract CurveSampler is
                 takerTokenIdx,
                 makerTokenIdx,
                 _toSingleValueArray(sellAmount)
+            ));
+        if (!success) {
+            return 0;
+        }
+        // solhint-disable-next-line indent
+        return abi.decode(resultData, (uint256[]))[0];
+    }
+
+    function sampleBuyFromCurve(
+        bytes memory encodedParams,
+        uint256 buyAmount
+    )
+        public
+        view
+        returns (uint256 sellAmount)
+    {
+        (CurveInfo memory curveInfo, int128 takerTokenIdx, int128 makerTokenIdx) =
+            abi.decode(encodedParams, (CurveInfo, int128, int128));
+
+        (bool success, bytes memory resultData) =
+            address(this).staticcall(abi.encodeWithSelector(
+                this.sampleBuysFromCurve.selector,
+                curveInfo,
+                takerTokenIdx,
+                makerTokenIdx,
+                _toSingleValueArray(buyAmount)
             ));
         if (!success) {
             return 0;

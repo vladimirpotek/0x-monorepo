@@ -20,11 +20,13 @@ pragma solidity ^0.5.9;
 pragma experimental ABIEncoderV2;
 
 import "@0x/contracts-utils/contracts/src/DeploymentConstants.sol";
-import "./IUniswapV2Router01.sol";
+import "./interfaces/IUniswapV2Router01.sol";
+import "./SamplerUtils.sol";
 
 
 contract UniswapV2Sampler is
-    DeploymentConstants
+    DeploymentConstants,
+    SamplerUtils
 {
     /// @dev Gas limit for UniswapV2 calls.
     uint256 constant private UNISWAPV2_CALL_GAS = 150e3; // 150k
@@ -95,5 +97,31 @@ contract UniswapV2Sampler is
             }
             takerTokenAmounts[i] = sellAmount;
         }
+    }
+
+    function sampleSellFromUniswapV2(
+        bytes memory encodedParams,
+        uint256 sellAmount
+    )
+        public
+        view
+        returns (uint256 buyAmount)
+    {
+        // solhint-disable-next-line indent
+        (address[] memory path) = abi.decode(encodedParams, (address[]));
+        return sampleSellsFromUniswapV2(path, _toSingleValueArray(sellAmount))[0];
+    }
+
+    function sampleBuyFromUniswapV2(
+        bytes memory encodedParams,
+        uint256 buyAmount
+    )
+        public
+        view
+        returns (uint256 sellAmount)
+    {
+        // solhint-disable-next-line indent
+        (address[] memory path) = abi.decode(encodedParams, (address[]));
+        return sampleBuysFromUniswapV2(path, _toSingleValueArray(buyAmount))[0];
     }
 }

@@ -21,7 +21,7 @@ pragma experimental ABIEncoderV2;
 
 import "@0x/contracts-exchange-libs/contracts/src/LibOrder.sol";
 import "@0x/contracts-exchange-libs/contracts/src/LibMath.sol";
-import "./IDevUtils.sol";
+import "./interfaces/IDevUtils.sol";
 
 
 contract NativeOrderSampler {
