@@ -1,8 +1,9 @@
+import { ERC20BridgeSamplerContract } from '@0x/contracts-erc20-bridge-sampler';
 import * as _ from 'lodash';
 
 import { BigNumber, ERC20BridgeSource, SignedOrder } from '../..';
 
-import { BalancerPool, BalancerPoolsCache, computeBalancerBuyQuote, computeBalancerSellQuote } from './balancer_utils';
+import { BalancerPoolsCache, computeBalancerBuyQuote, computeBalancerSellQuote } from './balancer_utils';
 import { getCurveInfosForPair } from './curve_utils';
 import { getMultiBridgeIntermediateToken } from './multibridge_utils';
 import {
@@ -11,327 +12,340 @@ import {
     CurveFillData,
     CurveInfo,
     DexSample,
+    LiquidityProviderFillData,
+    SamplerContractOperation,
     SourceQuoteOperation,
     UniswapV2FillData,
 } from './types';
+
+// tslint:disable:no-inferred-empty-object-type
 
 /**
  * Composable operations that can be batched in a single transaction,
  * for use with `DexOrderSampler.executeAsync()`.
  */
-export const samplerOperations = {
-    getOrderFillableTakerAmounts(orders: SignedOrder[], devUtilsAddress: string): BatchedOperation<BigNumber[]> {
+export class SamplerOperations {
+    private static _constant<T>(result: T): BatchedOperation<T> {
         return {
-            encodeCall: contract => {
-                return contract
-                    .getOrderFillableTakerAssetAmounts(orders, orders.map(o => o.signature), devUtilsAddress)
-                    .getABIEncodedTransactionData();
+            encodeCall: () => {
+                return '0x';
             },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('getOrderFillableTakerAssetAmounts', callResults);
+            handleCallResultsAsync: async _callResults => {
+                return result;
             },
         };
-    },
-    getOrderFillableMakerAmounts(orders: SignedOrder[], devUtilsAddress: string): BatchedOperation<BigNumber[]> {
-        return {
-            encodeCall: contract => {
-                return contract
-                    .getOrderFillableMakerAssetAmounts(orders, orders.map(o => o.signature), devUtilsAddress)
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('getOrderFillableMakerAssetAmounts', callResults);
-            },
-        };
-    },
-    getKyberSellQuotes(makerToken: string, takerToken: string, takerFillAmounts: BigNumber[]): SourceQuoteOperation {
-        return {
-            source: ERC20BridgeSource.Kyber,
-            encodeCall: contract => {
-                return contract
-                    .sampleSellsFromKyberNetwork(takerToken, makerToken, takerFillAmounts)
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('sampleSellsFromKyberNetwork', callResults);
-            },
-        };
-    },
-    getKyberBuyQuotes(makerToken: string, takerToken: string, makerFillAmounts: BigNumber[]): SourceQuoteOperation {
-        return {
-            source: ERC20BridgeSource.Kyber,
-            encodeCall: contract => {
-                return contract
-                    .sampleBuysFromKyberNetwork(takerToken, makerToken, makerFillAmounts)
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('sampleBuysFromKyberNetwork', callResults);
-            },
-        };
-    },
-    getUniswapSellQuotes(makerToken: string, takerToken: string, takerFillAmounts: BigNumber[]): SourceQuoteOperation {
-        return {
-            source: ERC20BridgeSource.Uniswap,
-            encodeCall: contract => {
-                return contract
-                    .sampleSellsFromUniswap(takerToken, makerToken, takerFillAmounts)
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('sampleSellsFromUniswap', callResults);
-            },
-        };
-    },
-    getUniswapBuyQuotes(makerToken: string, takerToken: string, makerFillAmounts: BigNumber[]): SourceQuoteOperation {
-        return {
-            source: ERC20BridgeSource.Uniswap,
-            encodeCall: contract => {
-                return contract
-                    .sampleBuysFromUniswap(takerToken, makerToken, makerFillAmounts)
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('sampleBuysFromUniswap', callResults);
-            },
-        };
-    },
-    getUniswapV2SellQuotes(
-        tokenAddressPath: string[],
-        takerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<UniswapV2FillData> {
-        return {
-            source: ERC20BridgeSource.UniswapV2,
-            fillData: { tokenAddressPath },
-            encodeCall: contract => {
-                return contract
-                    .sampleSellsFromUniswapV2(tokenAddressPath, takerFillAmounts)
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('sampleSellsFromUniswapV2', callResults);
-            },
-        };
-    },
-    getUniswapV2BuyQuotes(
-        tokenAddressPath: string[],
-        makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation<UniswapV2FillData> {
-        return {
-            source: ERC20BridgeSource.UniswapV2,
-            fillData: { tokenAddressPath },
-            encodeCall: contract => {
-                return contract
-                    .sampleBuysFromUniswapV2(tokenAddressPath, makerFillAmounts)
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('sampleBuysFromUniswapV2', callResults);
-            },
-        };
-    },
-    getLiquidityProviderSellQuotes(
-        registryAddress: string,
+    }
+
+    constructor(
+        protected readonly _samplerContract: ERC20BridgeSamplerContract,
+        public readonly balancerPoolsCache: BalancerPoolsCache = new BalancerPoolsCache(),
+    ) {}
+
+    public getOrderFillableTakerAmounts(orders: SignedOrder[], devUtilsAddress: string): BatchedOperation<BigNumber[]> {
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.Native,
+            this._samplerContract.getOrderFillableTakerAssetAmounts,
+            [orders, orders.map(o => o.signature), devUtilsAddress],
+        );
+    }
+
+    public getOrderFillableMakerAmounts(orders: SignedOrder[], devUtilsAddress: string): BatchedOperation<BigNumber[]> {
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.Native,
+            this._samplerContract.getOrderFillableMakerAssetAmounts,
+            [orders, orders.map(o => o.signature), devUtilsAddress],
+        );
+    }
+
+    public getKyberSellQuotes(
         makerToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
     ): SourceQuoteOperation {
-        return {
-            source: ERC20BridgeSource.LiquidityProvider,
-            encodeCall: contract => {
-                return contract
-                    .sampleSellsFromLiquidityProviderRegistry(registryAddress, takerToken, makerToken, takerFillAmounts)
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>(
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.Kyber,
+            this._samplerContract.sampleSellsFromKyberNetwork,
+            [takerToken, makerToken, takerFillAmounts],
+        );
+    }
+
+    public getKyberBuyQuotes(
+        makerToken: string,
+        takerToken: string,
+        makerFillAmounts: BigNumber[],
+    ): SourceQuoteOperation {
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.Kyber,
+            this._samplerContract.sampleBuysFromKyberNetwork,
+            [takerToken, makerToken, makerFillAmounts],
+        );
+    }
+
+    public getUniswapSellQuotes(
+        makerToken: string,
+        takerToken: string,
+        takerFillAmounts: BigNumber[],
+    ): SourceQuoteOperation {
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.Uniswap,
+            this._samplerContract.sampleSellsFromUniswap,
+            [takerToken, makerToken, takerFillAmounts],
+        );
+    }
+
+    public getUniswapBuyQuotes(
+        makerToken: string,
+        takerToken: string,
+        makerFillAmounts: BigNumber[],
+    ): SourceQuoteOperation {
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.Uniswap,
+            this._samplerContract.sampleBuysFromUniswap,
+            [takerToken, makerToken, makerFillAmounts],
+        );
+    }
+
+    public getUniswapV2SellQuotes(
+        tokenAddressPath: string[],
+        takerFillAmounts: BigNumber[],
+    ): SourceQuoteOperation<UniswapV2FillData> {
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.UniswapV2,
+            this._samplerContract.sampleSellsFromUniswapV2,
+            [tokenAddressPath, takerFillAmounts],
+            { tokenAddressPath },
+        );
+    }
+
+    public getUniswapV2BuyQuotes(
+        tokenAddressPath: string[],
+        makerFillAmounts: BigNumber[],
+    ): SourceQuoteOperation<UniswapV2FillData> {
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.UniswapV2,
+            this._samplerContract.sampleBuysFromUniswapV2,
+            [tokenAddressPath, makerFillAmounts],
+            { tokenAddressPath },
+        );
+    }
+
+    public getLiquidityProviderSellQuotes(
+        registryAddress: string,
+        makerToken: string,
+        takerToken: string,
+        takerFillAmounts: BigNumber[],
+    ): SourceQuoteOperation<LiquidityProviderFillData> {
+        const op = new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.LiquidityProvider,
+            this._samplerContract.sampleSellsFromLiquidityProviderRegistry,
+            [registryAddress, takerToken, makerToken, takerFillAmounts],
+            {} as LiquidityProviderFillData, // tslint:disable-line:no-object-literal-type-assertion
+            async (callResults: string): Promise<BigNumber[]> => {
+                const [samples, poolAddress] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], string]>(
                     'sampleSellsFromLiquidityProviderRegistry',
                     callResults,
                 );
+                op.fillData.poolAddress = poolAddress;
+                return Promise.resolve(samples);
             },
-        };
-    },
-    getLiquidityProviderBuyQuotes(
+        );
+        return op;
+    }
+
+    public getLiquidityProviderBuyQuotes(
         registryAddress: string,
         makerToken: string,
         takerToken: string,
         makerFillAmounts: BigNumber[],
-    ): SourceQuoteOperation {
-        return {
-            source: ERC20BridgeSource.LiquidityProvider,
-            encodeCall: contract => {
-                return contract
-                    .sampleBuysFromLiquidityProviderRegistry(registryAddress, takerToken, makerToken, makerFillAmounts)
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>(
+    ): SourceQuoteOperation<LiquidityProviderFillData> {
+        const op = new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.LiquidityProvider,
+            this._samplerContract.sampleBuysFromLiquidityProviderRegistry,
+            [registryAddress, takerToken, makerToken, makerFillAmounts],
+            {} as LiquidityProviderFillData, // tslint:disable-line:no-object-literal-type-assertion
+            async (callResults: string): Promise<BigNumber[]> => {
+                const [samples, poolAddress] = this._samplerContract.getABIDecodedReturnData<[BigNumber[], string]>(
                     'sampleBuysFromLiquidityProviderRegistry',
                     callResults,
                 );
+                op.fillData.poolAddress = poolAddress;
+                return Promise.resolve(samples);
             },
-        };
-    },
-    getMultiBridgeSellQuotes(
+        );
+        return op;
+    }
+
+    public getMultiBridgeSellQuotes(
         multiBridgeAddress: string,
         makerToken: string,
         intermediateToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
     ): SourceQuoteOperation {
-        return {
-            source: ERC20BridgeSource.MultiBridge,
-            encodeCall: contract => {
-                return contract
-                    .sampleSellsFromMultiBridge(
-                        multiBridgeAddress,
-                        takerToken,
-                        intermediateToken,
-                        makerToken,
-                        takerFillAmounts,
-                    )
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('sampleSellsFromMultiBridge', callResults);
-            },
-        };
-    },
-    getEth2DaiSellQuotes(makerToken: string, takerToken: string, takerFillAmounts: BigNumber[]): SourceQuoteOperation {
-        return {
-            source: ERC20BridgeSource.Eth2Dai,
-            encodeCall: contract => {
-                return contract
-                    .sampleSellsFromEth2Dai(takerToken, makerToken, takerFillAmounts)
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('sampleSellsFromEth2Dai', callResults);
-            },
-        };
-    },
-    getEth2DaiBuyQuotes(makerToken: string, takerToken: string, makerFillAmounts: BigNumber[]): SourceQuoteOperation {
-        return {
-            source: ERC20BridgeSource.Eth2Dai,
-            encodeCall: contract => {
-                return contract
-                    .sampleBuysFromEth2Dai(takerToken, makerToken, makerFillAmounts)
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('sampleBuysFromEth2Dai', callResults);
-            },
-        };
-    },
-    getCurveSellQuotes(
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.MultiBridge,
+            this._samplerContract.sampleSellsFromMultiBridge,
+            [multiBridgeAddress, takerToken, intermediateToken, makerToken, takerFillAmounts],
+        );
+    }
+
+    public getEth2DaiSellQuotes(
+        makerToken: string,
+        takerToken: string,
+        takerFillAmounts: BigNumber[],
+    ): SourceQuoteOperation {
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.Eth2Dai,
+            this._samplerContract.sampleSellsFromEth2Dai,
+            [takerToken, makerToken, takerFillAmounts],
+        );
+    }
+
+    public getEth2DaiBuyQuotes(
+        makerToken: string,
+        takerToken: string,
+        makerFillAmounts: BigNumber[],
+    ): SourceQuoteOperation {
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.Eth2Dai,
+            this._samplerContract.sampleBuysFromEth2Dai,
+            [takerToken, makerToken, makerFillAmounts],
+        );
+    }
+
+    public getCurveSellQuotes(
         curve: CurveInfo,
         fromTokenIdx: number,
         toTokenIdx: number,
         takerFillAmounts: BigNumber[],
     ): SourceQuoteOperation<CurveFillData> {
-        return {
-            source: ERC20BridgeSource.Curve,
-            fillData: {
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.Curve,
+            this._samplerContract.sampleSellsFromCurve,
+            [
+                {
+                    poolAddress: curve.poolAddress,
+                    sellQuoteFunctionSelector: curve.sellQuoteFunctionSelector,
+                    buyQuoteFunctionSelector: curve.buyQuoteFunctionSelector,
+                },
+                new BigNumber(fromTokenIdx),
+                new BigNumber(toTokenIdx),
+                takerFillAmounts,
+            ],
+            {
                 curve,
                 fromTokenIdx,
                 toTokenIdx,
             },
-            encodeCall: contract => {
-                return contract
-                    .sampleSellsFromCurve(
-                        {
-                            poolAddress: curve.poolAddress,
-                            sellQuoteFunctionSelector: curve.sellQuoteFunctionSelector,
-                            buyQuoteFunctionSelector: curve.buyQuoteFunctionSelector,
-                        },
-                        new BigNumber(fromTokenIdx),
-                        new BigNumber(toTokenIdx),
-                        takerFillAmounts,
-                    )
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('sampleSellsFromCurve', callResults);
-            },
-        };
-    },
-    getCurveBuyQuotes(
+        );
+    }
+
+    public getCurveBuyQuotes(
         curve: CurveInfo,
         fromTokenIdx: number,
         toTokenIdx: number,
         makerFillAmounts: BigNumber[],
     ): SourceQuoteOperation<CurveFillData> {
-        return {
-            source: ERC20BridgeSource.Curve,
-            fillData: {
+        return new SamplerContractOperation(
+            this._samplerContract,
+            ERC20BridgeSource.Curve,
+            this._samplerContract.sampleBuysFromCurve,
+            [
+                {
+                    poolAddress: curve.poolAddress,
+                    sellQuoteFunctionSelector: curve.sellQuoteFunctionSelector,
+                    buyQuoteFunctionSelector: curve.buyQuoteFunctionSelector,
+                },
+                new BigNumber(fromTokenIdx),
+                new BigNumber(toTokenIdx),
+                makerFillAmounts,
+            ],
+            {
                 curve,
                 fromTokenIdx,
                 toTokenIdx,
             },
-            encodeCall: contract => {
-                return contract
-                    .sampleBuysFromCurve(
-                        {
-                            poolAddress: curve.poolAddress,
-                            sellQuoteFunctionSelector: curve.sellQuoteFunctionSelector,
-                            buyQuoteFunctionSelector: curve.buyQuoteFunctionSelector,
-                        },
-                        new BigNumber(fromTokenIdx),
-                        new BigNumber(toTokenIdx),
-                        makerFillAmounts,
-                    )
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<BigNumber[]>('sampleBuysFromCurve', callResults);
-            },
-        };
-    },
-    getBalancerSellQuotes(pool: BalancerPool, takerFillAmounts: BigNumber[]): SourceQuoteOperation<BalancerFillData> {
-        return {
-            source: ERC20BridgeSource.Balancer,
-            fillData: { poolAddress: pool.id },
-            ...samplerOperations.constant(takerFillAmounts.map(amount => computeBalancerSellQuote(pool, amount))),
-        };
-    },
-    getBalancerBuyQuotes(pool: BalancerPool, makerFillAmounts: BigNumber[]): SourceQuoteOperation<BalancerFillData> {
-        return {
-            source: ERC20BridgeSource.Balancer,
-            fillData: { poolAddress: pool.id },
-            ...samplerOperations.constant(makerFillAmounts.map(amount => computeBalancerBuyQuote(pool, amount))),
-        };
-    },
-    getMedianSellRateAsync: async (
+        );
+    }
+
+    public async getBalancerSellQuotesAsync(
+        makerToken: string,
+        takerToken: string,
+        takerFillAmounts: BigNumber[],
+    ): Promise<Array<Array<DexSample<BalancerFillData>>>> {
+        const pools = await this.balancerPoolsCache.getPoolsForPairAsync(takerToken, makerToken);
+        return pools.map(pool =>
+            takerFillAmounts.map(amount => ({
+                source: ERC20BridgeSource.Balancer,
+                output: computeBalancerSellQuote(pool, amount),
+                input: amount,
+                fillData: { poolAddress: pool.id },
+            })),
+        );
+    }
+
+    public async getBalancerBuyQuotesAsync(
+        makerToken: string,
+        takerToken: string,
+        makerFillAmounts: BigNumber[],
+    ): Promise<Array<Array<DexSample<BalancerFillData>>>> {
+        const pools = await this.balancerPoolsCache.getPoolsForPairAsync(takerToken, makerToken);
+        return pools.map(pool =>
+            makerFillAmounts.map(amount => ({
+                source: ERC20BridgeSource.Balancer,
+                output: computeBalancerBuyQuote(pool, amount),
+                input: amount,
+                fillData: { poolAddress: pool.id },
+            })),
+        );
+    }
+
+    public async getMedianSellRateAsync(
         sources: ERC20BridgeSource[],
         makerToken: string,
         takerToken: string,
         takerFillAmount: BigNumber,
         wethAddress: string,
-        balancerPoolsCache?: BalancerPoolsCache,
         liquidityProviderRegistryAddress?: string,
         multiBridgeAddress?: string,
-    ): Promise<BatchedOperation<BigNumber>> => {
+    ): Promise<BatchedOperation<BigNumber>> {
         if (makerToken.toLowerCase() === takerToken.toLowerCase()) {
-            return samplerOperations.constant(new BigNumber(1));
+            return Promise.resolve(SamplerOperations._constant(new BigNumber(1)));
         }
-        const getSellQuotes = await samplerOperations.getSellQuotesAsync(
+        const getSellQuotes = await this.getSellQuotesAsync(
             sources,
             makerToken,
             takerToken,
             [takerFillAmount],
             wethAddress,
-            balancerPoolsCache,
             liquidityProviderRegistryAddress,
             multiBridgeAddress,
         );
         return {
-            encodeCall: contract => {
-                const subCalls = [getSellQuotes.encodeCall(contract)];
-                return contract.batchCall(subCalls).getABIEncodedTransactionData();
+            encodeCall: () => {
+                const subCalls = [getSellQuotes.encodeCall()];
+                return this._samplerContract.batchCall(subCalls).getABIEncodedTransactionData();
             },
-            handleCallResultsAsync: async (contract, callResults) => {
-                const rawSubCallResults = contract.getABIDecodedReturnData<string[]>('batchCall', callResults);
-                const samples = await getSellQuotes.handleCallResultsAsync(contract, rawSubCallResults[0]);
+            handleCallResultsAsync: async callResults => {
+                const rawSubCallResults = this._samplerContract.getABIDecodedReturnData<string[]>(
+                    'batchCall',
+                    callResults,
+                );
+                const samples = await getSellQuotes.handleCallResultsAsync(rawSubCallResults[0]);
                 if (samples.length === 0) {
                     return new BigNumber(0);
                 }
@@ -346,62 +360,31 @@ export const samplerOperations = {
                 return medianSample.output.div(medianSample.input);
             },
         };
-    },
-    constant<T>(result: T): BatchedOperation<T> {
-        return {
-            encodeCall: _contract => {
-                return '0x';
-            },
-            handleCallResultsAsync: async (_contract, _callResults) => {
-                return result;
-            },
-        };
-    },
-    getLiquidityProviderFromRegistry(
-        registryAddress: string,
-        makerToken: string,
-        takerToken: string,
-    ): BatchedOperation<string> {
-        return {
-            encodeCall: contract => {
-                return contract
-                    .getLiquidityProviderFromRegistry(registryAddress, takerToken, makerToken)
-                    .getABIEncodedTransactionData();
-            },
-            handleCallResultsAsync: async (contract, callResults) => {
-                return contract.getABIDecodedReturnData<string>('getLiquidityProviderFromRegistry', callResults);
-            },
-        };
-    },
-    getSellQuotesAsync: async (
+    }
+
+    public async getSellQuotesAsync(
         sources: ERC20BridgeSource[],
         makerToken: string,
         takerToken: string,
         takerFillAmounts: BigNumber[],
         wethAddress: string,
-        balancerPoolsCache?: BalancerPoolsCache,
         liquidityProviderRegistryAddress?: string,
         multiBridgeAddress?: string,
-    ): Promise<BatchedOperation<DexSample[][]>> => {
+    ): Promise<BatchedOperation<DexSample[][]>> {
         const subOps = _.flatten(
             await Promise.all(
                 sources.map(
                     async (source): Promise<SourceQuoteOperation | SourceQuoteOperation[]> => {
                         switch (source) {
                             case ERC20BridgeSource.Eth2Dai:
-                                return samplerOperations.getEth2DaiSellQuotes(makerToken, takerToken, takerFillAmounts);
+                                return this.getEth2DaiSellQuotes(makerToken, takerToken, takerFillAmounts);
                             case ERC20BridgeSource.Uniswap:
-                                return samplerOperations.getUniswapSellQuotes(makerToken, takerToken, takerFillAmounts);
+                                return this.getUniswapSellQuotes(makerToken, takerToken, takerFillAmounts);
                             case ERC20BridgeSource.UniswapV2:
-                                const ops = [
-                                    samplerOperations.getUniswapV2SellQuotes(
-                                        [takerToken, makerToken],
-                                        takerFillAmounts,
-                                    ),
-                                ];
+                                const ops = [this.getUniswapV2SellQuotes([takerToken, makerToken], takerFillAmounts)];
                                 if (takerToken !== wethAddress && makerToken !== wethAddress) {
                                     ops.push(
-                                        samplerOperations.getUniswapV2SellQuotes(
+                                        this.getUniswapV2SellQuotes(
                                             [takerToken, wethAddress, makerToken],
                                             takerFillAmounts,
                                         ),
@@ -409,10 +392,10 @@ export const samplerOperations = {
                                 }
                                 return ops;
                             case ERC20BridgeSource.Kyber:
-                                return samplerOperations.getKyberSellQuotes(makerToken, takerToken, takerFillAmounts);
+                                return this.getKyberSellQuotes(makerToken, takerToken, takerFillAmounts);
                             case ERC20BridgeSource.Curve:
                                 return getCurveInfosForPair(takerToken, makerToken).map(curve =>
-                                    samplerOperations.getCurveSellQuotes(
+                                    this.getCurveSellQuotes(
                                         curve,
                                         curve.tokens.indexOf(takerToken),
                                         curve.tokens.indexOf(makerToken),
@@ -425,7 +408,7 @@ export const samplerOperations = {
                                         'Cannot sample liquidity from a LiquidityProvider liquidity pool, if a registry is not provided.',
                                     );
                                 }
-                                return samplerOperations.getLiquidityProviderSellQuotes(
+                                return this.getLiquidityProviderSellQuotes(
                                     liquidityProviderRegistryAddress,
                                     makerToken,
                                     takerToken,
@@ -438,23 +421,12 @@ export const samplerOperations = {
                                     );
                                 }
                                 const intermediateToken = getMultiBridgeIntermediateToken(takerToken, makerToken);
-                                return samplerOperations.getMultiBridgeSellQuotes(
+                                return this.getMultiBridgeSellQuotes(
                                     multiBridgeAddress,
                                     makerToken,
                                     intermediateToken,
                                     takerToken,
                                     takerFillAmounts,
-                                );
-                            // todo: refactor sampler ops to share state with DexOrderSampler so cache doesn't have to be passed as a param
-                            case ERC20BridgeSource.Balancer:
-                                if (balancerPoolsCache === undefined) {
-                                    throw new Error(
-                                        'Cannot sample liquidity from Balancer if a cache is not provided.',
-                                    );
-                                }
-                                const pools = await balancerPoolsCache.getPoolsForPairAsync(takerToken, makerToken);
-                                return pools.map(pool =>
-                                    samplerOperations.getBalancerSellQuotes(pool, takerFillAmounts),
                                 );
                             default:
                                 throw new Error(`Unsupported sell sample source: ${source}`);
@@ -463,22 +435,20 @@ export const samplerOperations = {
                 ),
             ),
         );
-        const samplerOps = subOps.filter(op => op.source !== ERC20BridgeSource.Balancer);
-        const nonSamplerOps = subOps.filter(op => op.source === ERC20BridgeSource.Balancer);
         return {
-            encodeCall: contract => {
-                const subCalls = samplerOps.map(op => op.encodeCall(contract));
-                return contract.batchCall(subCalls).getABIEncodedTransactionData();
+            encodeCall: () => {
+                const subCalls = subOps.map(op => op.encodeCall());
+                return this._samplerContract.batchCall(subCalls).getABIEncodedTransactionData();
             },
-            handleCallResultsAsync: async (contract, callResults) => {
-                const rawSubCallResults = contract.getABIDecodedReturnData<string[]>('batchCall', callResults);
-                let samples = await Promise.all(
-                    samplerOps.map(async (op, i) => op.handleCallResultsAsync(contract, rawSubCallResults[i])),
+            handleCallResultsAsync: async callResults => {
+                const rawSubCallResults = this._samplerContract.getABIDecodedReturnData<string[]>(
+                    'batchCall',
+                    callResults,
                 );
-                samples = samples.concat(
-                    await Promise.all(nonSamplerOps.map(async op => op.handleCallResultsAsync(contract, ''))),
+                const samples = await Promise.all(
+                    subOps.map(async (op, i) => op.handleCallResultsAsync(rawSubCallResults[i])),
                 );
-                return [...samplerOps, ...nonSamplerOps].map((op, i) => {
+                return subOps.map((op, i) => {
                     return samples[i].map((output, j) => ({
                         source: op.source,
                         output,
@@ -488,32 +458,30 @@ export const samplerOperations = {
                 });
             },
         };
-    },
-    getBuyQuotesAsync: async (
+    }
+
+    public async getBuyQuotesAsync(
         sources: ERC20BridgeSource[],
         makerToken: string,
         takerToken: string,
         makerFillAmounts: BigNumber[],
         wethAddress: string,
-        balancerPoolsCache?: BalancerPoolsCache,
         liquidityProviderRegistryAddress?: string,
-    ): Promise<BatchedOperation<DexSample[][]>> => {
+    ): Promise<BatchedOperation<DexSample[][]>> {
         const subOps = _.flatten(
             await Promise.all(
                 sources.map(
                     async (source): Promise<SourceQuoteOperation | SourceQuoteOperation[]> => {
                         switch (source) {
                             case ERC20BridgeSource.Eth2Dai:
-                                return samplerOperations.getEth2DaiBuyQuotes(makerToken, takerToken, makerFillAmounts);
+                                return this.getEth2DaiBuyQuotes(makerToken, takerToken, makerFillAmounts);
                             case ERC20BridgeSource.Uniswap:
-                                return samplerOperations.getUniswapBuyQuotes(makerToken, takerToken, makerFillAmounts);
+                                return this.getUniswapBuyQuotes(makerToken, takerToken, makerFillAmounts);
                             case ERC20BridgeSource.UniswapV2:
-                                const ops = [
-                                    samplerOperations.getUniswapV2BuyQuotes([takerToken, makerToken], makerFillAmounts),
-                                ];
+                                const ops = [this.getUniswapV2BuyQuotes([takerToken, makerToken], makerFillAmounts)];
                                 if (takerToken !== wethAddress && makerToken !== wethAddress) {
                                     ops.push(
-                                        samplerOperations.getUniswapV2BuyQuotes(
+                                        this.getUniswapV2BuyQuotes(
                                             [takerToken, wethAddress, makerToken],
                                             makerFillAmounts,
                                         ),
@@ -521,10 +489,10 @@ export const samplerOperations = {
                                 }
                                 return ops;
                             case ERC20BridgeSource.Kyber:
-                                return samplerOperations.getKyberBuyQuotes(makerToken, takerToken, makerFillAmounts);
+                                return this.getKyberBuyQuotes(makerToken, takerToken, makerFillAmounts);
                             case ERC20BridgeSource.Curve:
                                 return getCurveInfosForPair(takerToken, makerToken).map(curve =>
-                                    samplerOperations.getCurveBuyQuotes(
+                                    this.getCurveBuyQuotes(
                                         curve,
                                         curve.tokens.indexOf(takerToken),
                                         curve.tokens.indexOf(makerToken),
@@ -537,21 +505,11 @@ export const samplerOperations = {
                                         'Cannot sample liquidity from a LiquidityProvider liquidity pool, if a registry is not provided.',
                                     );
                                 }
-                                return samplerOperations.getLiquidityProviderBuyQuotes(
+                                return this.getLiquidityProviderBuyQuotes(
                                     liquidityProviderRegistryAddress,
                                     makerToken,
                                     takerToken,
                                     makerFillAmounts,
-                                );
-                            case ERC20BridgeSource.Balancer:
-                                if (balancerPoolsCache === undefined) {
-                                    throw new Error(
-                                        'Cannot sample liquidity from Balancer if a cache is not provided.',
-                                    );
-                                }
-                                const pools = await balancerPoolsCache.getPoolsForPairAsync(takerToken, makerToken);
-                                return pools.map(pool =>
-                                    samplerOperations.getBalancerBuyQuotes(pool, makerFillAmounts),
                                 );
                             default:
                                 throw new Error(`Unsupported buy sample source: ${source}`);
@@ -560,22 +518,20 @@ export const samplerOperations = {
                 ),
             ),
         );
-        const samplerOps = subOps.filter(op => op.source !== ERC20BridgeSource.Balancer);
-        const nonSamplerOps = subOps.filter(op => op.source === ERC20BridgeSource.Balancer);
         return {
-            encodeCall: contract => {
-                const subCalls = samplerOps.map(op => op.encodeCall(contract));
-                return contract.batchCall(subCalls).getABIEncodedTransactionData();
+            encodeCall: () => {
+                const subCalls = subOps.map(op => op.encodeCall());
+                return this._samplerContract.batchCall(subCalls).getABIEncodedTransactionData();
             },
-            handleCallResultsAsync: async (contract, callResults) => {
-                const rawSubCallResults = contract.getABIDecodedReturnData<string[]>('batchCall', callResults);
-                let samples = await Promise.all(
-                    samplerOps.map(async (op, i) => op.handleCallResultsAsync(contract, rawSubCallResults[i])),
+            handleCallResultsAsync: async callResults => {
+                const rawSubCallResults = this._samplerContract.getABIDecodedReturnData<string[]>(
+                    'batchCall',
+                    callResults,
                 );
-                samples = samples.concat(
-                    await Promise.all(nonSamplerOps.map(async op => op.handleCallResultsAsync(contract, ''))),
+                const samples = await Promise.all(
+                    subOps.map(async (op, i) => op.handleCallResultsAsync(rawSubCallResults[i])),
                 );
-                return [...samplerOps, ...nonSamplerOps].map((op, i) => {
+                return subOps.map((op, i) => {
                     return samples[i].map((output, j) => ({
                         source: op.source,
                         output,
@@ -585,6 +541,6 @@ export const samplerOperations = {
                 });
             },
         };
-    },
-};
+    }
+}
 // tslint:disable max-file-line-count

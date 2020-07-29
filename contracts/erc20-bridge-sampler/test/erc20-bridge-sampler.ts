@@ -867,7 +867,7 @@ blockchainTests('erc20-bridge-sampler', env => {
         });
     });
 
-    describe('getLiquidityProviderFromRegistry', () => {
+    describe('liquidity provider', () => {
         const xAsset = randomAddress();
         const yAsset = randomAddress();
         const sampleAmounts = getSampleAmounts(yAsset);
@@ -891,22 +891,6 @@ blockchainTests('erc20-bridge-sampler', env => {
             await registryContract
                 .setLiquidityProviderForMarket(xAsset, yAsset, liquidityProvider.address)
                 .awaitTransactionSuccessAsync();
-        });
-
-        it('should be able to get the liquidity provider', async () => {
-            const xyLiquidityProvider = await testContract
-                .getLiquidityProviderFromRegistry(registryContract.address, xAsset, yAsset)
-                .callAsync();
-            const yxLiquidityProvider = await testContract
-                .getLiquidityProviderFromRegistry(registryContract.address, yAsset, xAsset)
-                .callAsync();
-            const unknownLiquidityProvider = await testContract
-                .getLiquidityProviderFromRegistry(registryContract.address, yAsset, randomAddress())
-                .callAsync();
-
-            expect(xyLiquidityProvider).to.eq(liquidityProvider.address);
-            expect(yxLiquidityProvider).to.eq(liquidityProvider.address);
-            expect(unknownLiquidityProvider).to.eq(constants.NULL_ADDRESS);
         });
 
         it('should be able to query sells from the liquidity provider', async () => {

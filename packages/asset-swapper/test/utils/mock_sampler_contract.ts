@@ -1,5 +1,5 @@
 import { ContractFunctionObj } from '@0x/base-contract';
-import { ERC20BridgeSamplerContract } from '@0x/contract-wrappers';
+import { ERC20BridgeSamplerContract } from '@0x/contracts-erc20-bridge-sampler';
 import { constants } from '@0x/contracts-test-utils';
 import { Order } from '@0x/types';
 import { BigNumber, hexUtils } from '@0x/utils';
@@ -28,7 +28,7 @@ export type SampleSellsLPHandler = (
     takerToken: string,
     makerToken: string,
     takerTokenAmounts: BigNumber[],
-) => SampleResults;
+) => [SampleResults, string];
 export type SampleSellsMultihopHandler = (path: string[], takerTokenAmounts: BigNumber[]) => SampleResults;
 export type SampleSellsMBHandler = (
     multiBridgeAddress: string,
@@ -104,7 +104,7 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
         takerToken: string,
         makerToken: string,
         takerAssetAmounts: BigNumber[],
-    ): ContractFunctionObj<GetOrderFillableAssetAmountResult> {
+    ): ContractFunctionObj<BigNumber[]> {
         return this._wrapCall(
             super.sampleSellsFromKyberNetwork,
             this._handlers.sampleSellsFromKyberNetwork,
@@ -118,7 +118,7 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
         takerToken: string,
         makerToken: string,
         takerAssetAmounts: BigNumber[],
-    ): ContractFunctionObj<GetOrderFillableAssetAmountResult> {
+    ): ContractFunctionObj<BigNumber[]> {
         return this._wrapCall(
             super.sampleSellsFromEth2Dai,
             this._handlers.sampleSellsFromEth2Dai,
@@ -132,7 +132,7 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
         takerToken: string,
         makerToken: string,
         takerAssetAmounts: BigNumber[],
-    ): ContractFunctionObj<GetOrderFillableAssetAmountResult> {
+    ): ContractFunctionObj<BigNumber[]> {
         return this._wrapCall(
             super.sampleSellsFromUniswap,
             this._handlers.sampleSellsFromUniswap,
@@ -142,10 +142,7 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
         );
     }
 
-    public sampleSellsFromUniswapV2(
-        path: string[],
-        takerAssetAmounts: BigNumber[],
-    ): ContractFunctionObj<GetOrderFillableAssetAmountResult> {
+    public sampleSellsFromUniswapV2(path: string[], takerAssetAmounts: BigNumber[]): ContractFunctionObj<BigNumber[]> {
         return this._wrapCall(
             super.sampleSellsFromUniswapV2,
             this._handlers.sampleSellsFromUniswapV2,
@@ -159,7 +156,7 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
         takerToken: string,
         makerToken: string,
         takerAssetAmounts: BigNumber[],
-    ): ContractFunctionObj<GetOrderFillableAssetAmountResult> {
+    ): ContractFunctionObj<[BigNumber[], string]> {
         return this._wrapCall(
             super.sampleSellsFromLiquidityProviderRegistry,
             this._handlers.sampleSellsFromLiquidityProviderRegistry,
@@ -176,7 +173,7 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
         intermediateToken: string,
         makerToken: string,
         takerAssetAmounts: BigNumber[],
-    ): ContractFunctionObj<GetOrderFillableAssetAmountResult> {
+    ): ContractFunctionObj<BigNumber[]> {
         return this._wrapCall(
             super.sampleSellsFromMultiBridge,
             this._handlers.sampleSellsFromMultiBridge,
@@ -192,7 +189,7 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
         takerToken: string,
         makerToken: string,
         makerAssetAmounts: BigNumber[],
-    ): ContractFunctionObj<GetOrderFillableAssetAmountResult> {
+    ): ContractFunctionObj<BigNumber[]> {
         return this._wrapCall(
             super.sampleBuysFromEth2Dai,
             this._handlers.sampleBuysFromEth2Dai,
@@ -206,7 +203,7 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
         takerToken: string,
         makerToken: string,
         makerAssetAmounts: BigNumber[],
-    ): ContractFunctionObj<GetOrderFillableAssetAmountResult> {
+    ): ContractFunctionObj<BigNumber[]> {
         return this._wrapCall(
             super.sampleBuysFromUniswap,
             this._handlers.sampleBuysFromUniswap,
@@ -216,10 +213,7 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
         );
     }
 
-    public sampleBuysFromUniswapV2(
-        path: string[],
-        makerAssetAmounts: BigNumber[],
-    ): ContractFunctionObj<GetOrderFillableAssetAmountResult> {
+    public sampleBuysFromUniswapV2(path: string[], makerAssetAmounts: BigNumber[]): ContractFunctionObj<BigNumber[]> {
         return this._wrapCall(
             super.sampleBuysFromUniswapV2,
             this._handlers.sampleBuysFromUniswapV2,
@@ -238,7 +232,12 @@ export class MockSamplerContract extends ERC20BridgeSamplerContract {
             if (handler && this.getSelector(name) === selector) {
                 const args = this.getABIDecodedTransactionData<any>(name, callData);
                 const result = (handler as any)(...args);
-                return this._lookupAbiEncoder(this.getFunctionSignature(name)).encodeReturnValues([result]);
+                const encoder = this._lookupAbiEncoder(this.getFunctionSignature(name));
+                if (encoder.getReturnValueDataItem().components!.length === 1) {
+                    return encoder.encodeReturnValues([result]);
+                } else {
+                    return encoder.encodeReturnValues(result);
+                }
             }
         }
         if (selector === this.getSelector('batchCall')) {

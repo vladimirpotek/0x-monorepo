@@ -48,21 +48,21 @@ contract LiquidityProviderSampler is
     )
         public
         view
-        returns (uint256[] memory makerTokenAmounts)
+        returns (uint256[] memory makerTokenAmounts, address providerAddress)
     {
         // Initialize array of maker token amounts.
         uint256 numSamples = takerTokenAmounts.length;
         makerTokenAmounts = new uint256[](numSamples);
 
         // Query registry for provider address.
-        address providerAddress = getLiquidityProviderFromRegistry(
+        providerAddress = _getLiquidityProviderFromRegistry(
             registryAddress,
             takerToken,
             makerToken
         );
         // If provider doesn't exist, return all zeros.
         if (providerAddress == address(0)) {
-            return makerTokenAmounts;
+            return (makerTokenAmounts, providerAddress);
         }
 
         for (uint256 i = 0; i < numSamples; i++) {
@@ -100,9 +100,14 @@ contract LiquidityProviderSampler is
     )
         public
         view
-        returns (uint256[] memory takerTokenAmounts)
+        returns (uint256[] memory takerTokenAmounts, address providerAddress)
     {
-        return _sampleApproximateBuys(
+        providerAddress = _getLiquidityProviderFromRegistry(
+            registryAddress,
+            takerToken,
+            makerToken
+        );
+        takerTokenAmounts = _sampleApproximateBuys(
             ApproximateBuyQuoteOpts({
                 pseudoBuyQuoteParams: abi.encode(registryAddress, makerToken, takerToken),
                 sellQuoteParams: abi.encode(registryAddress, takerToken, makerToken),
@@ -110,32 +115,6 @@ contract LiquidityProviderSampler is
             }),
             makerTokenAmounts
         );
-    }
-
-    /// @dev Returns the address of a liquidity provider for the given market
-    ///      (takerToken, makerToken), from a registry of liquidity providers.
-    ///      Returns address(0) if no such provider exists in the registry.
-    /// @param takerToken Taker asset managed by liquidity provider.
-    /// @param makerToken Maker asset managed by liquidity provider.
-    /// @return providerAddress Address of the liquidity provider.
-    function getLiquidityProviderFromRegistry(
-        address registryAddress,
-        address takerToken,
-        address makerToken
-    )
-        public
-        view
-        returns (address providerAddress)
-    {
-        bytes memory callData = abi.encodeWithSelector(
-            ILiquidityProviderRegistry(0).getLiquidityProviderForMarket.selector,
-            takerToken,
-            makerToken
-        );
-        (bool didSucceed, bytes memory returnData) = registryAddress.staticcall(callData);
-        if (didSucceed && returnData.length == 32) {
-            return LibBytes.readAddress(returnData, 12);
-        }
     }
 
     function sampleSellFromLiquidityProviderRegistry(
@@ -188,5 +167,31 @@ contract LiquidityProviderSampler is
         }
         // solhint-disable-next-line indent
         return abi.decode(resultData, (uint256[]))[0];
+    }
+    
+    /// @dev Returns the address of a liquidity provider for the given market
+    ///      (takerToken, makerToken), from a registry of liquidity providers.
+    ///      Returns address(0) if no such provider exists in the registry.
+    /// @param takerToken Taker asset managed by liquidity provider.
+    /// @param makerToken Maker asset managed by liquidity provider.
+    /// @return providerAddress Address of the liquidity provider.
+    function _getLiquidityProviderFromRegistry(
+        address registryAddress,
+        address takerToken,
+        address makerToken
+    )
+        private
+        view
+        returns (address providerAddress)
+    {
+        bytes memory callData = abi.encodeWithSelector(
+            ILiquidityProviderRegistry(0).getLiquidityProviderForMarket.selector,
+            takerToken,
+            makerToken
+        );
+        (bool didSucceed, bytes memory returnData) = registryAddress.staticcall(callData);
+        if (didSucceed && returnData.length == 32) {
+            return LibBytes.readAddress(returnData, 12);
+        }
     }
 }
